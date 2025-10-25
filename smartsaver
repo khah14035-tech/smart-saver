@@ -1,0 +1,300 @@
+import React, { useEffect, useState } from "react";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { motion } from "framer-motion";
+import { Savings, Wallet, PlusCircle, Trash2 } from "lucide-react";
+
+// ملف React كامل كمكون افتراضي
+// يستخدم Tailwind CSS للتصميم (افتراضي في المشروع)
+// يعتمد على recharts لعرض الرسم البياني و framer-motion للانتقالات
+// يحفظ البيانات محليًا في localStorage
+
+export default function SmartSaverApp() {
+  // الحالة الأساسية
+  const [income, setIncome] = useState(0);
+  const [expenses, setExpenses] = useState([
+    { id: 1, name: "طعام", amount: 0 },
+    { id: 2, name: "نقل", amount: 0 },
+    { id: 3, name: "ترفيه", amount: 0 },
+  ]);
+  const [note, setNote] = useState("");
+  const [advice, setAdvice] = useState("");
+
+  // ألوان ثابتة للرسم البياني
+  const COLORS = ["#60A5FA", "#34D399", "#FBBF24", "#F87171", "#A78BFA"];
+
+  // تحميل البيانات من localStorage عند البداية
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("smartsaver_data_v1");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setIncome(parsed.income || 0);
+        setExpenses(parsed.expenses || expenses);
+        setNote(parsed.note || "");
+      }
+    } catch (e) {
+      console.warn("failed to load local data", e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // حفظ تلقائي عند تغير البيانات
+  useEffect(() => {
+    const payload = { income, expenses, note };
+    localStorage.setItem("smartsaver_data_v1", JSON.stringify(payload));
+    computeAdvice();
+  }, [income, expenses, note]);
+
+  // حساب مجموع المصروفات
+  const totalExpenses = expenses.reduce((s, e) => s + Number(e.amount || 0), 0);
+  const savings = Number(income || 0) - Number(totalExpenses || 0);
+  const percent = income > 0 ? Math.round((savings / income) * 100 * 10) / 10 : 0; // واحد عشري
+
+  // دالة لإضافة بند جديد
+  function addExpense() {
+    const maxId = expenses.reduce((m, e) => Math.max(m, e.id), 0);
+    setExpenses([...expenses, { id: maxId + 1, name: "بند جديد", amount: 0 }]);
+  }
+
+  // دالة لحذف بند
+  function removeExpense(id) {
+    setExpenses(expenses.filter((e) => e.id !== id));
+  }
+
+  // تحديث بند
+  function updateExpense(id, field, value) {
+    setExpenses(
+      expenses.map((e) => (e.id === id ? { ...e, [field]: field === "amount" ? Number(value) : value } : e))
+    );
+  }
+
+  // منطق النصائح الذكية
+  function computeAdvice() {
+    // نصائح عامة حسب نسبة الادخار
+    let adv = [];
+
+    if (income <= 0) {
+      adv.push("أدخل دخلك الشهري أولًا ليتم حساب النصائح بدقة.");
+      setAdvice(adv.join(" "));
+      return;
+    }
+
+    if (percent < 0) {
+      adv.push("تنبيه: مصروفاتك أكبر من دخلك — فكر بتقليل بعض البنود أو زيادة الدخل.");
+    } else if (percent < 10) {
+      adv.push("معدل الادخار منخفض (<10%). جرّب تحديد ميزانية أسبوعية وقلل المشتريات غير الضرورية.");
+    } else if (percent < 20) {
+      adv.push("أداء جيد (10–20%). يمكنك تحسينه بتقليل الوجبات الجاهزة والنقل غير الضروري.");
+    } else if (percent < 40) {
+      adv.push("ادخار قوي (20–40%). فكر في فتح حساب توفير أو الاستثمار بمبلغ صغير شهريًا.");
+    } else {
+      adv.push("ممتاز جدًا (>40%)! توازن بين الادخار وجودة الحياة وفكّر في تنويع استثماراتك.");
+    }
+
+    // نصائح على مستوى الفئات: إذا فئة تمثل نسبة كبيرة من المصروف
+    const important = expenses
+      .map((e) => ({ ...e, pct: income > 0 ? (Number(e.amount) / income) * 100 : 0 }))
+      .sort((a, b) => b.pct - a.pct);
+
+    // ننظر لأكبر 2 بند
+    for (let i = 0; i < Math.min(2, important.length); i++) {
+      const item = important[i];
+      if (item.pct > 10) {
+        if (/طعام|اكل|وجبة|مطعم/i.test(item.name)) {
+          adv.push(`مصروفك على "${item.name}" يمثل ${Math.round(item.pct * 10) / 10}% من دخلك — جرّب الطبخ المنزلي لتخفيضه.`);
+        } else if (/نقل|تاكسي|بنزين|مواصلات/i.test(item.name)) {
+          adv.push(`مصروف النقل (${item.name}) كبير — فكّر في مشاركة التنقل أو استخدام وسائل أرخص.`);
+        } else if (/ترفيه|تسوق|ألعاب|كافيه/i.test(item.name)) {
+          adv.push(`أنفق على ${item.name} بنسبة ${Math.round(item.pct * 10) / 10}% — قلل المشتريات الترفيهية لترفع ادخارك.`);
+        } else {
+          adv.push(`راجع بند "${item.name}" وحاول تقليله بنسبة بسيطة (10–20%) للتأثير على مدخراتك.`);
+        }
+      }
+    }
+
+    // نصيحة عملية: تخصيص قواعد بسيطة
+    if (percent < 20) adv.push("اقتراح عملي: جرّب قاعدة 50/30/20 أو ابدأ بحسم 10% تلقائيًا إلى حساب ادخار.");
+
+    // نصيحة للمدخرات السلبية أو صفر
+    if (savings <= 0) adv.push("ابدأ بخطوات صغيرة: قلّل بندًا واحدًا له تأثير كبير أو حاول إيجاد مصدر دخل إضافي.");
+
+    setAdvice(adv.join(" \n\n"));
+  }
+
+  // استخراج بيانات للرسم البياني
+  const chartData = expenses.map((e) => ({ name: e.name, value: Number(e.amount) }));
+
+  // وظيفة لتصفير البيانات
+  function resetAll() {
+    if (!confirm("هل تريد مسح كل البيانات المحفوظة؟")) return;
+    localStorage.removeItem("smartsaver_data_v1");
+    setIncome(0);
+    setExpenses([
+      { id: 1, name: "طعام", amount: 0 },
+      { id: 2, name: "نقل", amount: 0 },
+      { id: 3, name: "ترفيه", amount: 0 },
+    ]);
+    setNote("");
+    setAdvice("");
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-white p-6 dark:from-slate-900 dark:to-slate-800">
+      <div className="max-w-4xl mx-auto">
+        <motion.header initial={{ y: -20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-500 to-green-400 text-white shadow-lg">
+              <Savings size={28} />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold">مدخراتي — SmartSaver</h1>
+              <p className="text-sm text-slate-600 dark:text-slate-300">أدارة ادخارك ومصروفاتك مع نصائح ذكية مخصصة</p>
+            </div>
+          </div>
+        </motion.header>
+
+        <motion.main initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }}>
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* الدخل والمجموع */}
+            <div className="bg-white dark:bg-slate-700 rounded-2xl p-5 shadow">
+              <h2 className="flex items-center gap-2 text-lg font-semibold mb-4">الدخل والمصروفات <Wallet size={18} /></h2>
+
+              <label className="block text-sm">دخلك الشهري (درهم)</label>
+              <input
+                type="number"
+                className="mt-2 mb-4 w-full p-3 rounded-lg border outline-none"
+                value={income}
+                onChange={(e) => setIncome(Number(e.target.value || 0))}
+              />
+
+              <div className="space-y-3">
+                {expenses.map((e) => (
+                  <div key={e.id} className="flex gap-2 items-center">
+                    <input
+                      className="p-2 rounded-lg flex-1 border outline-none"
+                      value={e.name}
+                      onChange={(ev) => updateExpense(e.id, "name", ev.target.value)}
+                    />
+                    <input
+                      className="w-32 p-2 rounded-lg border outline-none"
+                      type="number"
+                      value={e.amount}
+                      onChange={(ev) => updateExpense(e.id, "amount", Number(ev.target.value || 0))}
+                    />
+                    <button onClick={() => removeExpense(e.id)} className="p-2 rounded-lg hover:bg-slate-100">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+                ))}
+
+                <div className="flex gap-2 mt-2">
+                  <button onClick={addExpense} className="px-3 py-2 bg-blue-500 text-white rounded-lg flex items-center gap-2">
+                    <PlusCircle size={16} /> إضافة بند
+                  </button>
+                  <button onClick={resetAll} className="px-3 py-2 border rounded-lg">مسح البيانات</button>
+                </div>
+              </div>
+            </div>
+
+            {/* الملخص والنصائح والرسم */}
+            <div className="bg-white dark:bg-slate-700 rounded-2xl p-5 shadow flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold">الملخص</h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">نظرة سريعة على دخلك، مصروفاتك ومدخراتك</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm">المدخرات</p>
+                  <p className={`text-2xl font-semibold ${savings < 0 ? 'text-rose-500' : 'text-green-600'}`}>{savings} د.إ</p>
+                  <p className="text-xs text-slate-500">{percent}% من الدخل</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="col-span-1">
+                  <h4 className="font-semibold mb-2">تفصيل المصروفات</h4>
+                  <ul className="space-y-2 text-sm">
+                    {expenses.map((e, i) => (
+                      <li key={i} className="flex justify-between">
+                        <span>{e.name}</span>
+                        <span>{e.amount} د.إ</span>
+                      </li>
+                    ))}
+                    <li className="flex justify-between font-semibold border-t pt-2">
+                      <span>المجموع</span>
+                      <span>{totalExpenses} د.إ</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="col-span-1 h-48">
+                  <ResponsiveContainer width="100%" height={180}>
+                    <PieChart>
+                      <Pie dataKey="value" data={chartData} outerRadius={60} fill="#8884d8" label>
+                        {chartData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => `${value} د.إ`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-semibold">نصائحك الشخصية</h4>
+                <div className="mt-2 whitespace-pre-line text-sm text-slate-700 dark:text-slate-200">
+                  {advice || "أدخل بياناتك لرؤية نصائح مخصصة"}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-semibold">ملاحظة خاصة (اختياري)</h4>
+                <textarea
+                  className="w-full mt-2 p-3 rounded-lg border outline-none"
+                  rows={3}
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  placeholder="اكتب ملاحظاتك أو هدف الادخار هنا (مثال: ادخر لشراء لاب توب)"
+                />
+              </div>
+
+            </div>
+          </section>
+
+          {/* منطقة الإجراءات الثانوية */}
+          <section className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-700 rounded-2xl p-4 shadow flex flex-col gap-2">
+              <h4 className="font-semibold">اقتراحات سريعة</h4>
+              <ul className="text-sm list-disc list-inside">
+                <li>حاول خصم 10% مباشرة عند استلام الراتب.</li>
+                <li>استبدل وجبتين جاهزتين بأكل منزلي.</li>
+                <li>راجع اشتراكاتك الشهرية وامسح غير المستخدم منها.</li>
+              </ul>
+            </div>
+
+            <div className="bg-white dark:bg-slate-700 rounded-2xl p-4 shadow col-span-2">
+              <h4 className="font-semibold">خطة ادخار مقترحة</h4>
+              <p className="text-sm mt-2">بناءً على نسبتك الحالية ({percent}%) يمكن تجربة الخطة التالية:</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="p-3 rounded-lg border">
+                  <p className="font-semibold">خطة محافظة</p>
+                  <p className="text-sm">ابدأ بخصم 5–10% شهريًا ووفر للمصروف الطارئ.</p>
+                </div>
+                <div className="p-3 rounded-lg border">
+                  <p className="font-semibold">خطة متوسطة</p>
+                  <p className="text-sm">استهدف 15–25% خلال 6 أشهر عن طريق تقليل بند أو بندين من المصروف.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </motion.main>
+
+        <footer className="mt-8 text-center text-sm text-slate-500">
+          مشروع تعليمي — يمكنك استخدامه وتعديله. مصمم للتعلم والتمرين.
+        </footer>
+      </div>
+    </div>
+  );
+}
